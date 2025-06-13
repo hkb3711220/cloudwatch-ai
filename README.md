@@ -6,6 +6,10 @@
 
 CloudWatch ログ・メトリクス調査用の AI エージェントです。Cursor やその他の AI 開発ツールとの統合のための MCP サーバーと、複雑な調査のための AutoGen マルチエージェントシステムの両方を提供します。
 
+## TODO
+
+- [ ] MCP の環境変数を設定できる
+
 ## 🌟 主な機能
 
 - **MCP サーバー統合**: Cursor IDE や Claude Desktop との直接連携
@@ -63,24 +67,13 @@ cp .env.mcp.example .env
         "run",
         "python",
         "run_mcp_server.py"
-      ],
-      "cwd": "/path/to/your/cloudwatch-log-agent",
-      "env": {
-        "PYTHONPATH": "/path/to/your/cloudwatch-log-agent",
-        "AWS_PROFILE": "default",
-        "AWS_REGION": "ap-northeast-1",
-        "LOG_LEVEL": "INFO",
-        "MCP_DEBUG": "false",
-        "MCP_TRANSPORT": "stdio",
-        "MCP_SERVER_NAME": "CloudWatch Logs AI Agent",
-        "MCP_SERVER_VERSION": "0.2.0"
-      }
+      ]
     }
   }
 }
 ```
 
-#### 利用可能な MCP ツール（14 つ）
+#### 利用可能な MCP ツール（10 つ）
 
 ##### CloudWatch Logs ツール（6 つ）
 
@@ -93,16 +86,12 @@ cp .env.mcp.example .env
 | `get_log_streams`             | 特定のロググループのストリーム取得 |
 | `get_recent_events`           | 最近のログイベント取得             |
 
-##### CloudWatch Metrics ツール（6 つ）
+##### CloudWatch Metrics ツール（2 つ）
 
-| ツール                           | 説明                                 |
-| -------------------------------- | ------------------------------------ |
-| `investigate_cloudwatch_metrics` | CloudWatch メトリクスの詳細調査      |
-| `list_available_metrics`         | 利用可能なメトリクスの一覧表示       |
-| `get_ec2_metrics`                | EC2 インスタンスの CPU 使用率取得    |
-| `get_lambda_metrics`             | Lambda 関数の実行時間・エラー率取得  |
-| `get_rds_metrics`                | RDS データベースの CPU 使用率取得    |
-| `get_api_gateway_metrics`        | API Gateway の包括的なメトリクス取得 |
+| ツール                           | 説明                            |
+| -------------------------------- | ------------------------------- |
+| `investigate_cloudwatch_metrics` | CloudWatch メトリクスの詳細調査 |
+| `list_available_metrics`         | 利用可能なメトリクスの一覧表示  |
 
 ##### システム管理ツール（2 つ）
 
