@@ -1,43 +1,58 @@
 """
-AWS CloudWatch Logs tools for AutoGen agents.
+AWS CloudWatch MCP Tools - Wrapper Module for AI Agents
 
-This module provides simple, focused functions that can be used as tools
-by AutoGen agents for CloudWatch Logs investigation.
+This module serves as the MCP (Model Context Protocol) interface layer for CloudWatch operations,
+providing JSON-formatted responses optimized for AI consumption. It acts as a wrapper around
+the core CloudWatch functionality implemented in cloudwatch_logs_tools.py and cloudwatch_metrics_tools.py.
+
+Key Features:
+- MCP-compatible JSON responses for all CloudWatch operations
+- Simplified error handling with structured error messages
+- Time-based filtering and data aggregation for log analysis
+- Automatic timestamp conversion to human-readable formats
+- Pattern analysis for error detection and health monitoring
+
+Architecture:
+- This module delegates actual AWS operations to specialized tool modules
+- cloudwatch_logs_tools.py: Core CloudWatch Logs functionality for AutoGen agents
+- cloudwatch_metrics_tools.py: Core CloudWatch Metrics functionality for AutoGen agents
+- All functions return JSON strings suitable for MCP protocol consumption
+
+Usage:
+This module is primarily intended for use by MCP servers and AI agents that need
+structured CloudWatch data. For direct programmatic access, use the underlying
+tool modules directly.
+
+Example:
+    >>> result = list_log_groups(limit=10)
+    >>> print(json.loads(result)['total_found'])
+    5
 """
 
-import boto3
 import json
 import logging
 from datetime import datetime, timezone, timedelta
-from typing import List, Dict, Optional, Any, Union
-from botocore.exceptions import ClientError, NoCredentialsError
-import os
-
-# Import new settings system
-try:
-    from ..config.settings import get_settings
-except ImportError:
-    try:
-        from src.config.settings import get_settings
-    except ImportError:
-        print("Warning: Could not import settings. Using default configuration.")
-
-        def get_settings():
-            class DefaultSettings:
-                class aws:
-                    region_name = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
-                    profile_name = os.getenv("AWS_PROFILE")
-
-            return DefaultSettings()
-
 
 # Configure logging
 logger = logging.getLogger(__name__)
 
+# Import new CloudWatch logs module
+try:
+    from .cloudwatch_logs_tools import (
+        list_log_groups as _list_log_groups,
+        list_log_streams as _list_log_streams,
+        search_log_events as _search_log_events,
+        get_log_events as _get_log_events,
+    )
+
+    LOGS_AVAILABLE = True
+except ImportError:
+    LOGS_AVAILABLE = False
+    logger.warning("CloudWatch logs module not available")
+
 # Import new CloudWatch metrics module
 try:
     from .cloudwatch_metrics_tools import (
-        create_cloudwatch_metrics_client,
         get_cloudwatch_metrics_tools,
     )
 
@@ -46,87 +61,10 @@ except ImportError:
     METRICS_AVAILABLE = False
     logger.warning("CloudWatch metrics module not available")
 
-# Global client instance (initialized when first used)
-_logs_client = None
-
-# Global CloudWatch metrics client instance
-_cloudwatch_metrics_client = None
-
-
-def _get_logs_client():
-    """Get or create CloudWatch Logs client using new settings system."""
-    global _logs_client
-    if _logs_client is None:
-        try:
-            # Get settings from new configuration system
-            settings = get_settings()
-
-            # Create session with settings
-            session_kwargs = {}
-            if settings.aws.profile_name:
-                session_kwargs["profile_name"] = settings.aws.profile_name
-            if settings.aws.region_name:
-                session_kwargs["region_name"] = settings.aws.region_name
-
-            session = boto3.Session(**session_kwargs)
-            _logs_client = session.client("logs")
-
-            # Test connection
-            _logs_client.describe_log_groups(limit=1)
-            logger.info(
-                f"Connected to CloudWatch Logs in region: {_logs_client.meta.region_name}"
-            )
-
-        except Exception as e:
-            logger.error(f"Failed to initialize CloudWatch Logs client: {e}")
-            raise
-
-    return _logs_client
-
-
-def create_cloudwatch_client(
-    region_name: Optional[str] = None, profile_name: Optional[str] = None
-):
-    """
-    Create a CloudWatch Logs client with specified or default configuration.
-
-    Args:
-        region_name: AWS region name (optional, uses settings if not provided)
-        profile_name: AWS profile name (optional, uses settings if not provided)
-
-    Returns:
-        CloudWatch Logs client
-    """
-    try:
-        # Get settings if parameters not provided
-        if region_name is None or profile_name is None:
-            settings = get_settings()
-            region_name = region_name or settings.aws.region_name
-            profile_name = profile_name or settings.aws.profile_name
-
-        # Create session
-        session_kwargs = {}
-        if profile_name:
-            session_kwargs["profile_name"] = profile_name
-        if region_name:
-            session_kwargs["region_name"] = region_name
-
-        session = boto3.Session(**session_kwargs)
-        client = session.client("logs")
-
-        # Test connection
-        client.describe_log_groups(limit=1)
-
-        return client
-
-    except Exception as e:
-        logger.error(f"Failed to create CloudWatch client: {e}")
-        raise
-
 
 def list_log_groups(name_prefix: str = "", limit: int = 50) -> str:
     """
-    List CloudWatch log groups.
+    List CloudWatch log groups (MCP wrapper).
 
     Args:
         name_prefix: Filter log groups by name prefix (optional)
@@ -135,37 +73,39 @@ def list_log_groups(name_prefix: str = "", limit: int = 50) -> str:
     Returns:
         JSON string containing list of log groups with their details
     """
+    if not LOGS_AVAILABLE:
+        return json.dumps(
+            {"error": "CloudWatch logs module not available"}, ensure_ascii=False
+        )
+
     try:
-        client = _get_logs_client()
+        # Use cloudwatch_logs_tools function
+        result = _list_log_groups(limit=limit, prefix=name_prefix)
 
-        kwargs = {"limit": limit}
-        if name_prefix:
-            kwargs["logGroupNamePrefix"] = name_prefix
+        # Convert to MCP format (simplified for AI consumption)
+        if isinstance(result, list) and result and "error" not in result[0]:
+            simplified_groups = []
+            for group in result:
+                simplified_groups.append(
+                    {
+                        "name": group["logGroupName"],
+                        "creation_time": datetime.fromtimestamp(
+                            group["creationTime"] / 1000
+                        ).isoformat(),
+                        "retention_days": group.get("retentionInDays", "Never expire"),
+                        "size_bytes": group.get("storedBytes", 0),
+                    }
+                )
 
-        response = client.describe_log_groups(**kwargs)
-        log_groups = response.get("logGroups", [])
-
-        # Simplify the response for AI agent consumption
-        simplified_groups = []
-        for group in log_groups:
-            simplified_groups.append(
-                {
-                    "name": group["logGroupName"],
-                    "creation_time": datetime.fromtimestamp(
-                        group["creationTime"] / 1000
-                    ).isoformat(),
-                    "retention_days": group.get("retentionInDays", "Never expire"),
-                    "size_bytes": group.get("storedBytes", 0),
-                }
+            mcp_result = {
+                "total_found": len(simplified_groups),
+                "log_groups": simplified_groups,
+            }
+            return json.dumps(mcp_result, ensure_ascii=False, indent=2)
+        else:
+            return json.dumps(
+                {"error": "Failed to retrieve log groups"}, ensure_ascii=False
             )
-
-        result = {
-            "total_found": len(simplified_groups),
-            "log_groups": simplified_groups,
-        }
-
-        logger.info(f"Found {len(simplified_groups)} log groups")
-        return json.dumps(result, ensure_ascii=False, indent=2)
 
     except Exception as e:
         error_msg = f"Error listing log groups: {str(e)}"
@@ -177,7 +117,7 @@ def list_log_streams(
     log_group_name: str, limit: int = 20, order_by: str = "LastEventTime"
 ) -> str:
     """
-    List log streams within a log group.
+    List log streams within a log group (MCP wrapper).
 
     Args:
         log_group_name: Name of the log group
@@ -187,52 +127,53 @@ def list_log_streams(
     Returns:
         JSON string containing list of log streams
     """
-    try:
-        client = _get_logs_client()
-
-        response = client.describe_log_streams(
-            logGroupName=log_group_name,
-            orderBy=order_by,
-            limit=limit,
-            descending=True,  # Most recent first for LastEventTime
+    if not LOGS_AVAILABLE:
+        return json.dumps(
+            {"error": "CloudWatch logs module not available"}, ensure_ascii=False
         )
 
-        streams = response.get("logStreams", [])
+    try:
+        # Use cloudwatch_logs_tools function
+        result = _list_log_streams(log_group_name=log_group_name, limit=limit)
 
-        # Simplify for AI consumption
-        simplified_streams = []
-        for stream in streams:
-            simplified_streams.append(
-                {
-                    "name": stream["logStreamName"],
-                    "creation_time": datetime.fromtimestamp(
-                        stream["creationTime"] / 1000
-                    ).isoformat(),
-                    "last_event_time": (
-                        datetime.fromtimestamp(
-                            stream.get("lastEventTime", 0) / 1000
-                        ).isoformat()
-                        if stream.get("lastEventTime")
-                        else None
-                    ),
-                    "last_ingestion_time": (
-                        datetime.fromtimestamp(
-                            stream.get("lastIngestionTime", 0) / 1000
-                        ).isoformat()
-                        if stream.get("lastIngestionTime")
-                        else None
-                    ),
-                }
+        # Convert to MCP format
+        if isinstance(result, list) and result and "error" not in result[0]:
+            simplified_streams = []
+            for stream in result:
+                simplified_streams.append(
+                    {
+                        "name": stream["logStreamName"],
+                        "creation_time": datetime.fromtimestamp(
+                            stream["creationTime"] / 1000
+                        ).isoformat(),
+                        "last_event_time": (
+                            datetime.fromtimestamp(
+                                stream.get("lastEventTime", 0) / 1000
+                            ).isoformat()
+                            if stream.get("lastEventTime")
+                            else None
+                        ),
+                        "last_ingestion_time": (
+                            datetime.fromtimestamp(
+                                stream.get("lastIngestionTime", 0) / 1000
+                            ).isoformat()
+                            if stream.get("lastIngestionTime")
+                            else None
+                        ),
+                    }
+                )
+
+            mcp_result = {
+                "log_group": log_group_name,
+                "total_found": len(simplified_streams),
+                "streams": simplified_streams,
+            }
+            return json.dumps(mcp_result, ensure_ascii=False, indent=2)
+        else:
+            return json.dumps(
+                {"error": f"Failed to retrieve streams for {log_group_name}"},
+                ensure_ascii=False,
             )
-
-        result = {
-            "log_group": log_group_name,
-            "total_found": len(simplified_streams),
-            "streams": simplified_streams,
-        }
-
-        logger.info(f"Found {len(simplified_streams)} streams in {log_group_name}")
-        return json.dumps(result, ensure_ascii=False, indent=2)
 
     except Exception as e:
         error_msg = f"Error listing streams in {log_group_name}: {str(e)}"
@@ -247,7 +188,7 @@ def search_log_events(
     max_events: int = 100,
 ) -> str:
     """
-    Search for log events across streams in a log group.
+    Search for log events across streams in a log group (MCP wrapper).
 
     Args:
         log_group_name: Name of the log group to search
@@ -258,49 +199,52 @@ def search_log_events(
     Returns:
         JSON string containing matching log events
     """
-    try:
-        client = _get_logs_client()
+    if not LOGS_AVAILABLE:
+        return json.dumps(
+            {"error": "CloudWatch logs module not available"}, ensure_ascii=False
+        )
 
+    try:
         # Calculate time range
         end_time = datetime.now(timezone.utc)
         start_time = end_time - timedelta(hours=hours_back)
 
-        kwargs = {
-            "logGroupName": log_group_name,
-            "startTime": int(start_time.timestamp() * 1000),
-            "endTime": int(end_time.timestamp() * 1000),
-            "limit": max_events,
-        }
+        # Use cloudwatch_logs_tools function
+        result = _search_log_events(
+            log_group_name=log_group_name,
+            filter_pattern=filter_pattern,
+            start_time=start_time.isoformat(),
+            end_time=end_time.isoformat(),
+            limit=max_events,
+        )
 
-        if filter_pattern:
-            kwargs["filterPattern"] = filter_pattern
+        # Convert to MCP format
+        if isinstance(result, list) and result and "error" not in result[0]:
+            simplified_events = []
+            for event in result:
+                simplified_events.append(
+                    {
+                        "timestamp": datetime.fromtimestamp(
+                            event["timestamp"] / 1000
+                        ).isoformat(),
+                        "log_stream": event["logStreamName"],
+                        "message": event["message"].strip(),
+                    }
+                )
 
-        response = client.filter_log_events(**kwargs)
-        events = response.get("events", [])
-
-        # Simplify events for AI consumption
-        simplified_events = []
-        for event in events:
-            simplified_events.append(
-                {
-                    "timestamp": datetime.fromtimestamp(
-                        event["timestamp"] / 1000
-                    ).isoformat(),
-                    "log_stream": event["logStreamName"],
-                    "message": event["message"].strip(),
-                }
+            mcp_result = {
+                "log_group": log_group_name,
+                "search_period": f"{hours_back} hours",
+                "filter_pattern": filter_pattern or "No filter",
+                "total_found": len(simplified_events),
+                "events": simplified_events,
+            }
+            return json.dumps(mcp_result, ensure_ascii=False, indent=2)
+        else:
+            return json.dumps(
+                {"error": f"Failed to search logs in {log_group_name}"},
+                ensure_ascii=False,
             )
-
-        result = {
-            "log_group": log_group_name,
-            "search_period": f"{hours_back} hours",
-            "filter_pattern": filter_pattern or "No filter",
-            "total_found": len(simplified_events),
-            "events": simplified_events,
-        }
-
-        logger.info(f"Found {len(simplified_events)} events in {log_group_name}")
-        return json.dumps(result, ensure_ascii=False, indent=2)
 
     except Exception as e:
         error_msg = f"Error searching logs in {log_group_name}: {str(e)}"
@@ -312,7 +256,7 @@ def get_recent_log_events(
     log_group_name: str, log_stream_name: str, hours_back: int = 1, max_events: int = 50
 ) -> str:
     """
-    Get recent log events from a specific log stream.
+    Get recent log events from a specific log stream (MCP wrapper).
 
     Args:
         log_group_name: Name of the log group
@@ -323,48 +267,53 @@ def get_recent_log_events(
     Returns:
         JSON string containing log events
     """
-    try:
-        client = _get_logs_client()
+    if not LOGS_AVAILABLE:
+        return json.dumps(
+            {"error": "CloudWatch logs module not available"}, ensure_ascii=False
+        )
 
+    try:
         # Calculate time range
         end_time = datetime.now(timezone.utc)
         start_time = end_time - timedelta(hours=hours_back)
 
-        response = client.get_log_events(
-            logGroupName=log_group_name,
-            logStreamName=log_stream_name,
-            startTime=int(start_time.timestamp() * 1000),
-            endTime=int(end_time.timestamp() * 1000),
+        # Use cloudwatch_logs_tools function
+        result = _get_log_events(
+            log_group_name=log_group_name,
+            log_stream_name=log_stream_name,
             limit=max_events,
-            startFromHead=False,  # Get most recent first
+            start_time=start_time.isoformat(),
+            end_time=end_time.isoformat(),
         )
 
-        events = response.get("events", [])
+        # Convert to MCP format
+        if isinstance(result, list) and result and "error" not in result[0]:
+            simplified_events = []
+            for event in result:
+                simplified_events.append(
+                    {
+                        "timestamp": datetime.fromtimestamp(
+                            event["timestamp"] / 1000
+                        ).isoformat(),
+                        "message": event["message"].strip(),
+                    }
+                )
 
-        # Simplify for AI consumption
-        simplified_events = []
-        for event in events:
-            simplified_events.append(
+            mcp_result = {
+                "log_group": log_group_name,
+                "log_stream": log_stream_name,
+                "period": f"{hours_back} hours",
+                "total_found": len(simplified_events),
+                "events": simplified_events,
+            }
+            return json.dumps(mcp_result, ensure_ascii=False, indent=2)
+        else:
+            return json.dumps(
                 {
-                    "timestamp": datetime.fromtimestamp(
-                        event["timestamp"] / 1000
-                    ).isoformat(),
-                    "message": event["message"].strip(),
-                }
+                    "error": f"Failed to get events from {log_group_name}/{log_stream_name}"
+                },
+                ensure_ascii=False,
             )
-
-        result = {
-            "log_group": log_group_name,
-            "log_stream": log_stream_name,
-            "period": f"{hours_back} hours",
-            "total_found": len(simplified_events),
-            "events": simplified_events,
-        }
-
-        logger.info(
-            f"Retrieved {len(simplified_events)} events from {log_group_name}/{log_stream_name}"
-        )
-        return json.dumps(result, ensure_ascii=False, indent=2)
 
     except Exception as e:
         error_msg = (
@@ -376,17 +325,48 @@ def get_recent_log_events(
 
 def analyze_log_patterns(log_group_name: str, hours_back: int = 24) -> str:
     """
-    Analyze log patterns and statistics for a log group.
+    Analyze log patterns and statistics for a log group to identify health issues.
+
+    This function performs intelligent pattern analysis on CloudWatch logs to detect
+    error patterns, warning trends, and overall system health. It samples events from
+    the most recent log streams and categorizes them by severity.
+
+    Features:
+    - Samples up to 500 events from the 5 most recent log streams
+    - Identifies error patterns (error, exception, failed keywords)
+    - Tracks warning patterns for early issue detection
+    - Provides health status assessment (HEALTHY/WARNING/ERROR)
+    - Returns frequency counts for top error and warning patterns
 
     Args:
-        log_group_name: Name of the log group to analyze
-        hours_back: How many hours back to analyze (default: 24)
+        log_group_name: Name of the CloudWatch log group to analyze
+        hours_back: Time window in hours for analysis (default: 24)
 
     Returns:
-        JSON string containing pattern analysis
+        JSON string containing:
+        - health_status: Overall health assessment
+        - total_events_sampled: Number of log events analyzed
+        - active_streams: Number of log streams with recent activity
+        - top_error_patterns: Most frequent error-related terms with counts
+        - top_warning_patterns: Most frequent warning-related terms with counts
+        - analysis_period: Time range covered by the analysis
+
+    Example:
+        >>> result = analyze_log_patterns("/aws/lambda/my-function", hours_back=12)
+        >>> data = json.loads(result)
+        >>> print(f"Health: {data['health_status']}")
+        Health: ERROR
     """
+    if not LOGS_AVAILABLE:
+        return json.dumps(
+            {"error": "CloudWatch logs module not available"}, ensure_ascii=False
+        )
+
     try:
-        client = _get_logs_client()
+        # This function remains in aws_utils.py as it's MCP-specific
+        from .cloudwatch_logs_tools import _get_cloudwatch_logs_client
+
+        client = _get_cloudwatch_logs_client()
 
         # Get recent streams
         streams_response = client.describe_log_streams(
@@ -474,47 +454,6 @@ def analyze_log_patterns(log_group_name: str, hours_back: int = 24) -> str:
         return json.dumps({"error": error_msg}, ensure_ascii=False)
 
 
-def _get_cloudwatch_metrics_client():
-    """Get or create CloudWatch metrics client using settings system."""
-    global _cloudwatch_metrics_client
-    if _cloudwatch_metrics_client is None:
-        try:
-            # Get settings from configuration system
-            settings = get_settings()
-
-            # Create session with settings
-            session_kwargs = {}
-            if settings.aws.profile_name:
-                session_kwargs["profile_name"] = settings.aws.profile_name
-            if settings.aws.region_name:
-                session_kwargs["region_name"] = settings.aws.region_name
-
-            session = boto3.Session(**session_kwargs)
-            _cloudwatch_metrics_client = session.client("cloudwatch")
-
-            # Test connection
-            _cloudwatch_metrics_client.list_metrics(MaxRecords=1)
-            logger.info(
-                f"Connected to CloudWatch Metrics in region: {_cloudwatch_metrics_client.meta.region_name}"
-            )
-
-        except Exception as e:
-            logger.error(f"Failed to initialize CloudWatch Metrics client: {e}")
-            raise
-
-    return _cloudwatch_metrics_client
-
-
-def get_cloudwatch_metrics_client():
-    """
-    Get CloudWatch metrics client for direct use.
-
-    Returns:
-        CloudWatch client for metrics operations
-    """
-    return _get_cloudwatch_metrics_client()
-
-
 # Tool function list for easy import by agents
 CLOUDWATCH_TOOLS = [
     list_log_groups,
@@ -532,7 +471,20 @@ if METRICS_AVAILABLE:
 
 
 def get_cloudwatch_tools():
-    """Return list of all CloudWatch tool functions for AutoGen agents."""
+    """
+    Get all available CloudWatch tool functions for AutoGen agents.
+
+    Returns a list of function references that can be used directly by AutoGen
+    agents for CloudWatch operations. These functions return structured data
+    optimized for AI consumption.
+
+    Returns:
+        List of CloudWatch tool functions including:
+        - Log group and stream listing
+        - Log event searching and retrieval
+        - Pattern analysis for health monitoring
+        - Metrics retrieval (if metrics module available)
+    """
     return CLOUDWATCH_TOOLS
 
 

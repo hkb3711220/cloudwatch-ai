@@ -1,18 +1,154 @@
 """
-CloudWatch Logs Tools for AutoGen Agents.
+CloudWatch Logs Tools for AutoGen Agents
 
-This module provides CloudWatch Logs functionality as AutoGen Tools,
-allowing agents to directly access and query CloudWatch Logs.
+This module provides comprehensive CloudWatch Logs functionality specifically designed
+for AutoGen agents and AI-driven log analysis. It offers direct access to AWS CloudWatch
+Logs with intelligent data formatting and error handling optimized for AI consumption.
+
+Core Capabilities:
+- Log group and stream discovery with metadata enrichment
+- Event retrieval with flexible time-based filtering
+- Advanced log searching using CloudWatch filter patterns
+- CloudWatch Logs Insights query execution and result retrieval
+- Automatic timestamp conversion and data normalization
+- Robust error handling with detailed error context
+
+Key Features:
+- **AI-Optimized Responses**: All functions return List[Dict] structures that are
+  easily consumable by AI agents for further analysis
+- **Flexible Time Handling**: Supports both Unix timestamps and ISO format strings
+- **Intelligent Defaults**: Sensible default values for common use cases
+- **Connection Management**: Automatic AWS client creation with settings integration
+- **Error Resilience**: Graceful error handling with informative error messages
+
+Architecture:
+This module serves as the core implementation layer for CloudWatch Logs operations.
+It's designed to be used directly by AutoGen agents or wrapped by MCP interface
+layers (like aws_utils.py) for different consumption patterns.
+
+Usage Examples:
+    # List log groups
+    groups = list_log_groups(limit=10, prefix="/aws/lambda")
+
+    # Search for errors in the last hour
+    errors = search_log_events(
+        "/aws/lambda/my-function",
+        "ERROR",
+        start_time="2023-01-01T10:00:00Z"
+    )
+
+    # Run Logs Insights query
+    query_result = start_logs_insights_query(
+        ["/aws/lambda/my-function"],
+        "fields @timestamp, @message | filter @message like /ERROR/"
+    )
+
+Dependencies:
+- boto3: AWS SDK for Python
+- AWS credentials configured via environment, IAM roles, or AWS profiles
+- Appropriate CloudWatch Logs permissions (logs:DescribeLogGroups, logs:FilterLogEvents, etc.)
 """
 
 import boto3
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Any, Union
-from autogen_core.tools import FunctionTool
-import json
 import logging
+import os
+
+# Import settings system
+try:
+    from ..config.settings import get_settings
+except ImportError:
+    try:
+        from src.config.settings import get_settings
+    except ImportError:
+        print("Warning: Could not import settings. Using default configuration.")
+
+        def get_settings():
+            class DefaultSettings:
+                class aws:
+                    region_name = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
+                    profile_name = os.getenv("AWS_PROFILE")
+
+            return DefaultSettings()
+
 
 logger = logging.getLogger(__name__)
+
+# Global client instance (initialized when first used)
+_cloudwatch_logs_client = None
+
+
+def _get_cloudwatch_logs_client():
+    """Get or create CloudWatch Logs client using settings configuration."""
+    global _cloudwatch_logs_client
+    if _cloudwatch_logs_client is None:
+        try:
+            settings = get_settings()
+
+            # Create session with settings configuration
+            session_kwargs = {}
+            if settings.aws.profile_name:
+                session_kwargs["profile_name"] = settings.aws.profile_name
+            if settings.aws.region_name:
+                session_kwargs["region_name"] = settings.aws.region_name
+
+            session = boto3.Session(**session_kwargs)
+            _cloudwatch_logs_client = session.client("logs")
+
+            # Test connection
+            _cloudwatch_logs_client.describe_log_groups(limit=1)
+            logger.info(
+                f"Connected to CloudWatch Logs in region: {_cloudwatch_logs_client.meta.region_name}"
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to initialize CloudWatch Logs client: {e}")
+            raise
+
+    return _cloudwatch_logs_client
+
+
+def create_cloudwatch_logs_client(
+    region_name: Optional[str] = None, profile_name: Optional[str] = None
+):
+    """
+    Create a CloudWatch Logs client with specified or default configuration.
+
+    Args:
+        region_name: AWS region name (optional, uses settings if not provided)
+        profile_name: AWS profile name (optional, uses settings if not provided)
+
+    Returns:
+        CloudWatch Logs client
+    """
+    try:
+        settings = get_settings()
+
+        # Use provided parameters or fall back to settings
+        if region_name is None:
+            region_name = settings.aws.region_name
+        if profile_name is None:
+            profile_name = settings.aws.profile_name
+
+        # Create session
+        session_kwargs = {}
+        if profile_name:
+            session_kwargs["profile_name"] = profile_name
+        if region_name:
+            session_kwargs["region_name"] = region_name
+
+        session = boto3.Session(**session_kwargs)
+        client = session.client("logs")
+
+        # Test connection
+        client.describe_log_groups(limit=1)
+
+        return client
+
+    except Exception as e:
+        logger.error(f"Failed to create CloudWatch Logs client: {e}")
+        raise
 
 
 # CloudWatch Logs tool functions
@@ -34,7 +170,7 @@ def list_log_groups(
         [{"logGroupName": "/aws/lambda/my-function", "creationTime": 1234567890, ...}]
     """
     try:
-        client = boto3.client("logs")
+        client = _get_cloudwatch_logs_client()
         kwargs = {"limit": limit}
 
         if prefix:
@@ -83,7 +219,7 @@ def list_log_streams(
         [{"logStreamName": "2023/01/01/[$LATEST]abcd1234", "creationTime": 1234567890, ...}]
     """
     try:
-        client = boto3.client("logs")
+        client = _get_cloudwatch_logs_client()
         kwargs = {
             "logGroupName": log_group_name,
             "limit": limit,
@@ -147,7 +283,7 @@ def get_log_events(
         [{"timestamp": 1234567890000, "message": "START RequestId: ...", "ingestionTime": 1234567891000}]
     """
     try:
-        client = boto3.client("logs")
+        client = _get_cloudwatch_logs_client()
         kwargs = {
             "logGroupName": log_group_name,
             "logStreamName": log_stream_name,
@@ -227,7 +363,7 @@ def search_log_events(
         [{"timestamp": 1234567890000, "message": "ERROR: Something went wrong", ...}]
     """
     try:
-        client = boto3.client("logs")
+        client = _get_cloudwatch_logs_client()
 
         # Set default time range if not provided (last 24 hours)
         if not start_time:
@@ -303,7 +439,7 @@ def start_logs_insights_query(
         {"queryId": "abcd-1234-efgh-5678", "status": "Running"}
     """
     try:
-        client = boto3.client("logs")
+        client = _get_cloudwatch_logs_client()
 
         # Set default time range if not provided (last 24 hours)
         if not start_time:
@@ -361,7 +497,7 @@ def get_logs_insights_results(query_id: str) -> Dict[str, Any]:
         {"status": "Complete", "results": [...], "statistics": {...}}
     """
     try:
-        client = boto3.client("logs")
+        client = _get_cloudwatch_logs_client()
 
         response = client.get_query_results(queryId=query_id)
 
@@ -387,15 +523,15 @@ def get_logs_insights_results(query_id: str) -> Dict[str, Any]:
 
 # Create AutoGen FunctionTools
 cloudwatch_logs_tools = [
-    FunctionTool.from_function(list_log_groups),
-    FunctionTool.from_function(list_log_streams),
-    FunctionTool.from_function(get_log_events),
-    FunctionTool.from_function(search_log_events),
-    FunctionTool.from_function(start_logs_insights_query),
-    FunctionTool.from_function(get_logs_insights_results),
+    list_log_groups,
+    list_log_streams,
+    get_log_events,
+    search_log_events,
+    start_logs_insights_query,
+    get_logs_insights_results,
 ]
 
 
-def get_cloudwatch_logs_tools() -> List[FunctionTool]:
+def get_cloudwatch_logs_tools():
     """Get all CloudWatch Logs tools for use with AutoGen agents."""
     return cloudwatch_logs_tools

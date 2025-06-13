@@ -1,8 +1,70 @@
 """
-AWS CloudWatch Metrics tools for AutoGen agents.
+AWS CloudWatch Metrics Tools for AutoGen Agents
 
-This module provides functions to retrieve CloudWatch metrics data
-in AI-friendly formats for analysis by AutoGen agents.
+This module provides comprehensive CloudWatch Metrics functionality designed specifically
+for AutoGen agents and AI-driven performance monitoring. It enables intelligent analysis
+of AWS service metrics with data formatting optimized for AI consumption and decision-making.
+
+Core Capabilities:
+- Metrics discovery across all AWS services and custom namespaces
+- Time-series data retrieval with flexible aggregation periods
+- Multi-statistic analysis (Average, Maximum, Minimum, Sum, SampleCount)
+- Dimension-based filtering for precise metric targeting
+- Automatic data point sorting and timestamp normalization
+- JSON-formatted responses optimized for AI analysis
+
+Key Features:
+- **AI-Optimized Data Format**: All responses are structured as JSON strings with
+  consistent formatting, making them ideal for AI agents to parse and analyze
+- **Flexible Time Windows**: Support for custom time ranges with intelligent defaults
+- **Multi-Statistic Support**: Retrieve multiple statistics in a single call for
+  comprehensive performance analysis
+- **Dimension Filtering**: Target specific resources using AWS dimension filters
+- **Error Resilience**: Robust error handling with detailed context for troubleshooting
+
+Supported AWS Services:
+- EC2: CPU utilization, network traffic, disk I/O
+- Lambda: Duration, errors, invocations, throttles
+- RDS: CPU, connections, read/write IOPS
+- ELB: Request count, latency, error rates
+- S3: Bucket metrics, request metrics
+- Custom metrics from applications and services
+
+Architecture:
+This module serves as the core implementation for CloudWatch Metrics operations,
+designed for direct use by AutoGen agents or integration with MCP wrapper layers.
+It handles AWS authentication, client management, and data transformation automatically.
+
+Usage Examples:
+    # Get EC2 CPU utilization for the last 24 hours
+    cpu_data = get_metric_statistics(
+        namespace="AWS/EC2",
+        metric_name="CPUUtilization",
+        dimensions=[{"Name": "InstanceId", "Value": "i-1234567890abcdef0"}],
+        statistics=["Average", "Maximum"]
+    )
+
+    # List all available Lambda metrics
+    lambda_metrics = list_available_metrics(namespace="AWS/Lambda")
+
+    # Get custom application metrics
+    app_metrics = get_metric_statistics(
+        namespace="MyApp/Performance",
+        metric_name="ResponseTime",
+        period=300,  # 5-minute intervals
+        statistics=["Average", "P99"]
+    )
+
+Performance Considerations:
+- Default period is 300 seconds (5 minutes) for optimal data granularity
+- Time ranges default to last 24 hours to balance detail with performance
+- Automatic data point sorting ensures chronological analysis
+- Efficient client connection reuse across multiple metric requests
+
+Dependencies:
+- boto3: AWS SDK for Python
+- AWS credentials with CloudWatch:GetMetricStatistics and CloudWatch:ListMetrics permissions
+- Valid AWS region configuration
 """
 
 import boto3
@@ -10,7 +72,6 @@ import json
 import logging
 from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Optional, Any, Union
-from botocore.exceptions import ClientError, NoCredentialsError
 import os
 
 # Import settings system
@@ -39,14 +100,13 @@ _cloudwatch_client = None
 
 
 def _get_cloudwatch_client():
-    """Get or create CloudWatch client using settings system."""
+    """Get or create CloudWatch client using settings configuration."""
     global _cloudwatch_client
     if _cloudwatch_client is None:
         try:
-            # Get settings from configuration system
             settings = get_settings()
 
-            # Create session with settings
+            # Create session with settings configuration
             session_kwargs = {}
             if settings.aws.profile_name:
                 session_kwargs["profile_name"] = settings.aws.profile_name
@@ -83,11 +143,13 @@ def create_cloudwatch_metrics_client(
         CloudWatch client
     """
     try:
-        # Get settings if parameters not provided
-        if region_name is None or profile_name is None:
-            settings = get_settings()
-            region_name = region_name or settings.aws.region_name
-            profile_name = profile_name or settings.aws.profile_name
+        settings = get_settings()
+
+        # Use provided parameters or fall back to settings
+        if region_name is None:
+            region_name = settings.aws.region_name
+        if profile_name is None:
+            profile_name = settings.aws.profile_name
 
         # Create session
         session_kwargs = {}

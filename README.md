@@ -1,17 +1,18 @@
-# CloudWatch Logs AI Agent
+# CloudWatch Logs & Metrics AI Agent
 
 **Version:** 3.0  
 **Language Support:** Japanese-first with English support  
 **Frameworks:** Microsoft AutoGen v0.4 + Model Context Protocol (MCP)
 
-CloudWatch ログ調査用の AI エージェントです。Cursor やその他の AI 開発ツールとの統合のための MCP サーバーと、複雑な調査のための AutoGen マルチエージェントシステムの両方を提供します。
+CloudWatch ログ・メトリクス調査用の AI エージェントです。Cursor やその他の AI 開発ツールとの統合のための MCP サーバーと、複雑な調査のための AutoGen マルチエージェントシステムの両方を提供します。
 
 ## 🌟 主な機能
 
 - **MCP サーバー統合**: Cursor IDE や Claude Desktop との直接連携
-- **AutoGen マルチエージェント**: 複雑なログ解析用の AI エージェントシステム
+- **AutoGen マルチエージェント**: 複雑なログ・メトリクス解析用の AI エージェントシステム
 - **日本語優先対応**: ネイティブな日本語処理とレポート
 - **AWS CloudWatch Logs**: 直接 API 統合とセキュアな認証
+- **AWS CloudWatch Metrics**: CPU、メモリ、ディスク、ネットワーク、API 呼び出し数、エラー率などの包括的なメトリクス調査
 - **エラー処理**: 包括的な例外管理とリトライ機能
 
 ## 📦 インストール
@@ -38,7 +39,7 @@ source .venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 
 # 設定ファイルをコピー
-cp .env.mcp .env
+cp .env.mcp.example .env
 
 # .env ファイルを編集（AWS認証情報を設定）
 ```
@@ -79,26 +80,70 @@ cp .env.mcp .env
 }
 ```
 
-#### 利用可能な MCP ツール（8 つ）
+#### 利用可能な MCP ツール（14 つ）
 
-| ツール                        | 説明                                   |
-| ----------------------------- | -------------------------------------- |
-| `investigate_cloudwatch_logs` | CloudWatch ログの詳細調査              |
-| `list_available_log_groups`   | 利用可能なロググループの一覧表示       |
-| `analyze_log_patterns`        | ログパターンとトレンドの分析           |
-| `test_connection`             | CloudWatch への接続テスト              |
-| `get_log_streams`             | 特定のロググループのストリーム取得     |
-| `get_recent_events`           | 最近のログイベント取得                 |
-| `get_request_metrics`         | MCP サーバーのリクエストメトリクス取得 |
-| `get_active_requests`         | 現在アクティブなリクエストの情報取得   |
+##### CloudWatch Logs ツール（6 つ）
+
+| ツール                        | 説明                               |
+| ----------------------------- | ---------------------------------- |
+| `investigate_cloudwatch_logs` | CloudWatch ログの詳細調査          |
+| `list_available_log_groups`   | 利用可能なロググループの一覧表示   |
+| `analyze_log_patterns`        | ログパターンとトレンドの分析       |
+| `test_connection`             | CloudWatch への接続テスト          |
+| `get_log_streams`             | 特定のロググループのストリーム取得 |
+| `get_recent_events`           | 最近のログイベント取得             |
+
+##### CloudWatch Metrics ツール（6 つ）
+
+| ツール                           | 説明                                 |
+| -------------------------------- | ------------------------------------ |
+| `investigate_cloudwatch_metrics` | CloudWatch メトリクスの詳細調査      |
+| `list_available_metrics`         | 利用可能なメトリクスの一覧表示       |
+| `get_ec2_metrics`                | EC2 インスタンスの CPU 使用率取得    |
+| `get_lambda_metrics`             | Lambda 関数の実行時間・エラー率取得  |
+| `get_rds_metrics`                | RDS データベースの CPU 使用率取得    |
+| `get_api_gateway_metrics`        | API Gateway の包括的なメトリクス取得 |
+
+##### システム管理ツール（2 つ）
+
+| ツール                | 説明                                   |
+| --------------------- | -------------------------------------- |
+| `get_request_metrics` | MCP サーバーのリクエストメトリクス取得 |
+| `get_active_requests` | 現在アクティブなリクエストの情報取得   |
 
 #### MCP での使用例
+
+##### ログ調査の例
 
 Cursor で以下のように使用：
 
 ```
 CloudWatch ログを調査して、過去24時間のエラーを分析してください。
 ロググループ: /aws/lambda/my-function
+```
+
+##### メトリクス調査の例
+
+Cursor で以下のように使用：
+
+```
+EC2インスタンス i-1234567890abcdef0 の過去1時間のCPU使用率を調査してください。
+```
+
+```
+Lambda関数 my-function の過去24時間の実行時間とエラー率を分析してください。
+```
+
+```
+API Gateway my-api の過去6時間のリクエスト数、レイテンシ、エラー率を調査してください。
+```
+
+##### 統合調査の例
+
+ログとメトリクスを組み合わせた調査：
+
+```
+Lambda関数でエラーが発生しています。メトリクス（実行時間、エラー率）とログの両方を調査して、根本原因を特定してください。
 ```
 
 ### 2. AutoGen エージェントとしての使用（Python スクリプト）
@@ -116,6 +161,16 @@ result = orchestrator.investigate(
     "Lambdaファンクションでエラーが発生しています。過去1時間のログを調査してください。"
 )
 
+# メトリクス調査を実行
+result = orchestrator.investigate(
+    "EC2インスタンスのCPU使用率が高いです。過去24時間のメトリクスを分析してください。"
+)
+
+# 統合調査を実行（ログ + メトリクス）
+result = orchestrator.investigate(
+    "API Gatewayでレスポンス時間が遅くなっています。メトリクスとログの両方を調査して原因を特定してください。"
+)
+
 print(result)
 ```
 
@@ -125,13 +180,19 @@ print(result)
 # インタラクティブモード
 python src/main.py
 
-# 単発調査
+# 単発調査（ログ）
 python src/main.py --instruction "エラーログを調査してください" --output result.json
+
+# 単発調査（メトリクス）
+python src/main.py --instruction "EC2のCPU使用率を調査してください" --output metrics_result.json
+
+# 統合調査（ログ + メトリクス）
+python src/main.py --instruction "Lambda関数の性能問題を調査してください" --output combined_result.json
 ```
 
 #### 利用可能なメソッド
 
-- `orchestrator.investigate(instruction)`: 日本語の指示でログ調査
+- `orchestrator.investigate(instruction)`: 日本語の指示でログ・メトリクス調査
 - `orchestrator.get_agent_status()`: エージェントの状態確認
 
 ## ⚙️ 設定

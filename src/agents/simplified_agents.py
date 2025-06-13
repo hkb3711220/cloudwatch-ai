@@ -23,22 +23,18 @@ from autogen_core.tools import FunctionTool
 # Project imports
 try:
     from src.tools.aws_utils import get_cloudwatch_tools
-    from src.config.settings import get_settings
 
-    print("✅ Imported from src.tools and src.config")
+    print("✅ Imported from src.tools")
 except ImportError as e1:
     print(f"First import attempt failed: {e1}")
     # Fallback for relative imports
     try:
         from ..tools.aws_utils import get_cloudwatch_tools
-        from ..config.settings import get_settings
 
         print("✅ Imported using relative imports")
     except ImportError as e2:
         print(f"Second import attempt failed: {e2}")
-        print(
-            "Warning: Could not import aws_utils or settings. Using fallback implementations."
-        )
+        print("Warning: Could not import aws_utils. Using fallback implementations.")
 
         # Create basic CloudWatch tool functions for testing
         def list_log_groups_dummy(name_prefix: str = "", limit: int = 50) -> str:
@@ -54,14 +50,6 @@ except ImportError as e1:
 
         def get_cloudwatch_tools():
             return [list_log_groups_dummy, search_log_events_dummy]
-
-        def get_settings():
-            class DummySettings:
-                class aws:
-                    region_name = "us-east-1"
-                    profile_name = None
-
-            return DummySettings()
 
 
 # Configure logging
@@ -81,7 +69,6 @@ class CloudWatchAgentOrchestrator:
 
     def __init__(self, config_path: Optional[str] = None):
         """Initialize the CloudWatch Agent Orchestrator."""
-        self.config = get_settings()
         self.model_client = None
         self.cloudwatch_tools = []
         self.agents = []
@@ -191,24 +178,30 @@ class CloudWatchAgentOrchestrator:
         # 1. Planner Agent - Task decomposition and delegation
         planner_agent = AssistantAgent(
             name="PlannerAgent",
-            description="Task planning and coordination agent. ALWAYS starts first to analyze investigation requests, decompose them into subtasks, and assign work to other agents. Creates the overall investigation strategy.",
+            description="Task planning and coordination agent. ALWAYS starts first to analyze investigation requests, decompose them into subtasks, and assign work to other agents. Creates the overall investigation strategy for both CloudWatch logs and metrics.",
             model_client=self.model_client,
-            system_message="""あなたはCloudWatchログ調査のプランナーエージェントです。
+            system_message="""あなたはCloudWatchログ・メトリクス調査のプランナーエージェントです。
 
 役割:
 - ユーザーからの調査指示を分析し、適切なサブタスクに分解する
 - 他の専門エージェントに作業を委任する
-- 調査の全体的な進行を管理する
+- ログとメトリクスの両方を含む調査の全体的な進行を管理する
 
 指示の分析パターン:
-- エラー調査: "xxエラーが発生しました。調査してください"
-- パフォーマンス調査: "レスポンスが遅いです。原因を調べてください"  
-- 時間範囲指定: "過去1時間", "昨日から", "今朝から"
+- エラー調査: "xxエラーが発生しました。調査してください" → ログ + エラーメトリクス
+- パフォーマンス調査: "レスポンスが遅いです。原因を調べてください" → ログ + CPU/メモリメトリクス
+- 実行回数調査: "Lambda関数は何回実行されましたか？" → メトリクス中心
+- 時間範囲指定: "過去1時間", "昨日から", "今朝から", "今週"
 - 緊急度判定: "緊急", "至急" → 高優先度
 
+調査対象の判定:
+- ログ調査: エラーメッセージ、アプリケーション動作、詳細な実行履歴
+- メトリクス調査: 実行回数、CPU使用率、メモリ使用率、レスポンス時間、エラー率
+- 複合調査: パフォーマンス問題、障害分析（ログ + メトリクス）
+
 チームメンバー:
-- InstructionAgent: 日本語指示の詳細解析
-- InvestigationAgent: CloudWatchログの実際の調査
+- InstructionAgent: 日本語指示の詳細解析（ログ・メトリクス両対応）
+- InvestigationAgent: CloudWatchログ・メトリクスの実際の調査
 - ReportingAgent: 日本語レポート作成
 
 タスクの委任時は次の形式を使用してください:
@@ -221,64 +214,89 @@ class CloudWatchAgentOrchestrator:
         # 2. Instruction Agent - Japanese instruction parsing
         instruction_agent = AssistantAgent(
             name="InstructionAgent",
-            description="Japanese instruction parser. Works AFTER PlannerAgent to convert natural language instructions into specific CloudWatch query parameters, time ranges, and search conditions.",
+            description="Japanese instruction parser. Works AFTER PlannerAgent to convert natural language instructions into specific CloudWatch query parameters, time ranges, and search conditions for both logs and metrics.",
             model_client=self.model_client,
-            system_message="""あなたは日本語指示解析の専門エージェントです。
+            system_message="""あなたは日本語指示解析の専門エージェントです（ログ・メトリクス両対応）。
 
 役割:
 - 日本語の調査指示を詳細に解析する
-- 技術的なパラメータに変換する
+- ログとメトリクスの技術的なパラメータに変換する
 - 曖昧な表現を具体的な条件に変換する
 
 解析項目:
 1. 調査対象の特定
    - アプリケーション名、サービス名
    - ログググループ名の推定
+   - AWSリソース（Lambda関数名、EC2インスタンス、RDS等）の特定
 
-2. 時間範囲の解析
+2. 調査タイプの判定
+   - ログ調査: エラーメッセージ、実行ログ、詳細な動作履歴
+   - メトリクス調査: 実行回数、CPU使用率、メモリ使用率、レスポンス時間
+   - 複合調査: パフォーマンス問題、障害分析
+
+3. 時間範囲の解析
    - "過去1時間" → hours_back: 1
    - "昨日から" → start_time計算
    - "今朝から" → 今日の午前0時から
+   - "今週" → 週の開始から現在まで
 
-3. 検索条件の抽出  
-   - エラーキーワード: "ERROR", "Exception", "Failed"
-   - 警告キーワード: "WARN", "Warning"
-   - フィルターパターンの生成
+4. 検索条件の抽出  
+   - ログ用: エラーキーワード("ERROR", "Exception", "Failed")、警告キーワード("WARN", "Warning")
+   - メトリクス用: namespace("AWS/Lambda", "AWS/EC2")、metric_name("Invocations", "CPUUtilization")、dimensions
 
-4. 優先度の判定
+5. 優先度の判定
    - "緊急", "至急" → 高優先度
    - "確認", "調査" → 通常優先度
 
 出力は構造化された調査パラメータとして提供してください。""",
         )
 
-        # 3. Investigation Agent - CloudWatch log investigation
+        # 3. Investigation Agent - CloudWatch log and metrics investigation
         investigation_agent = AssistantAgent(
             name="InvestigationAgent",
-            description="CloudWatch investigation executor. Works AFTER InstructionAgent to perform actual log searches using CloudWatch tools, pattern analysis, and anomaly detection. Has access to all CloudWatch tools.",
+            description="CloudWatch investigation executor. Works AFTER InstructionAgent to perform actual log searches and metrics analysis using CloudWatch tools, pattern analysis, and anomaly detection. Has access to all CloudWatch logs and metrics tools.",
             model_client=self.model_client,
             tools=self.cloudwatch_tools,
-            system_message="""あなたはCloudWatchログ調査の専門エージェントです。
+            system_message="""あなたはCloudWatchログ・メトリクス調査の専門エージェントです。
 
 利用可能なツール:
+【ログ調査ツール】
 - list_log_groups: ロググループ一覧取得
 - list_log_streams: ログストリーム一覧取得  
 - search_log_events: ログイベント検索
 - get_recent_log_events: 最新ログイベント取得
 - analyze_log_patterns: ログパターン分析
 
+【メトリクス調査ツール】
+- get_metric_statistics: 汎用メトリクス統計取得
+- list_available_metrics: 利用可能メトリクス一覧取得
+
 調査手順:
+【ログ調査の場合】
 1. 関連するロググループの特定
 2. 最新のログストリームの確認
 3. 指定条件でのログ検索実行
 4. エラーパターンの分析
 5. 異常な傾向の特定
 
+【メトリクス調査の場合】
+1. 対象リソースの特定（Lambda関数名、EC2インスタンスID等）
+2. 適切なnamespace、metric_name、dimensionsの設定
+3. 時間範囲とperiodの設定
+4. メトリクス統計の取得と分析
+5. 傾向とパターンの特定
+
+【複合調査の場合】
+1. ログとメトリクスの両方を調査
+2. 相関関係の分析
+3. 総合的な問題の特定
+
 注意事項:
 - ツールの結果はJSON形式で返される
 - エラーハンドリングを適切に行う
-- 大量のログデータの場合は段階的に調査する
+- 大量のデータの場合は段階的に調査する
 - 日本語での解釈と説明を提供する
+- メトリクス調査では適切なdimensions（例：FunctionName=test2）を指定する
 
 調査結果は技術的詳細と共に分かりやすく報告してください。""",
         )
@@ -286,33 +304,47 @@ class CloudWatchAgentOrchestrator:
         # 4. Reporting Agent - Japanese report generation
         reporting_agent = AssistantAgent(
             name="ReportingAgent",
-            description="Japanese report generator. Works LAST after InvestigationAgent to create comprehensive Japanese reports from investigation findings, provide recommendations, and create actionable summaries.",
+            description="Japanese report generator. Works LAST after InvestigationAgent to create comprehensive Japanese reports from both log and metrics investigation findings, provide recommendations, and create actionable summaries.",
             model_client=self.model_client,
-            system_message="""あなたは調査結果レポート作成の専門エージェントです。
+            system_message="""あなたは調査結果レポート作成の専門エージェントです（ログ・メトリクス両対応）。
 
 レポート構成:
 1. 調査概要
    - 調査対象と期間
+   - 調査タイプ（ログ、メトリクス、複合）
    - 検索条件と方法
 
 2. 発見事項  
+   【ログ調査結果】
    - エラーの発生状況
-   - パターンと傾向
+   - ログパターンと傾向
    - 重要度の評価
+   
+   【メトリクス調査結果】
+   - 実行回数、使用率等の数値データ
+   - パフォーマンス傾向
+   - 閾値との比較
+   
+   【複合分析結果】
+   - ログとメトリクスの相関関係
+   - 総合的な問題の特定
 
 3. 詳細分析
    - 技術的な詳細
    - 根本原因の推定
    - 影響範囲の評価
+   - 数値データの解釈
 
 4. 推奨事項
    - 即座に取るべき対応
    - 予防策の提案
    - 監視改善の提案
+   - メトリクス監視の設定提案
 
 レポート品質:
 - 非技術者にも理解できる説明
 - 具体的な数値とデータ
+- グラフや表での視覚的表現（テキストベース）
 - 緊急度に応じた推奨事項
 - アクションアイテムの明確化
 
@@ -423,15 +455,15 @@ class CloudWatchAgentOrchestrator:
 
             # Enhance instruction with context
             enhanced_instruction = f"""
-CloudWatchログ調査を開始します。
+CloudWatchログ・メトリクス調査を開始します。
 
 調査指示: {instruction}
 
 チームメンバー:
 - PlannerAgent: タスク分解と計画立案
-- InstructionAgent: 指示の詳細解析
-- InvestigationAgent: CloudWatchログの実際の調査
-- ReportingAgent: 結果レポートの作成
+- InstructionAgent: 指示の詳細解析（ログ・メトリクス両対応）
+- InvestigationAgent: CloudWatchログ・メトリクスの実際の調査
+- ReportingAgent: 結果レポートの作成（ログ・メトリクス統合）
 
 """
 

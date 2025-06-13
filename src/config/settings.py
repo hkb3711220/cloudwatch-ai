@@ -47,59 +47,6 @@ class AWSConfig:
 
 
 @dataclass
-class LogInvestigationConfig:
-    """Configuration for log investigation parameters."""
-
-    default_log_limit: int = 1000
-    max_log_events: int = 10000
-    default_time_range_hours: int = 24
-    search_timeout_seconds: int = 300
-
-    # CloudWatch Logs filter patterns
-    error_patterns: list = None
-    warning_patterns: list = None
-
-    def __post_init__(self):
-        if self.error_patterns is None:
-            self.error_patterns = [
-                "ERROR",
-                "error",
-                "Error",
-                "CRITICAL",
-                "critical",
-                "Critical",
-                "FATAL",
-                "fatal",
-                "Fatal",
-                "Exception",
-                "exception",
-                "Failed",
-                "failed",
-                "FAILED",
-            ]
-
-        if self.warning_patterns is None:
-            self.warning_patterns = [
-                "WARNING",
-                "warning",
-                "Warning",
-                "WARN",
-                "warn",
-                "Warn",
-            ]
-
-    @classmethod
-    def from_environment(cls) -> "LogInvestigationConfig":
-        """Create log investigation config from environment variables."""
-        return cls(
-            default_log_limit=int(os.getenv("DEFAULT_LOG_LIMIT", "1000")),
-            max_log_events=int(os.getenv("MAX_LOG_EVENTS", "10000")),
-            default_time_range_hours=int(os.getenv("DEFAULT_TIME_RANGE_HOURS", "24")),
-            search_timeout_seconds=int(os.getenv("SEARCH_TIMEOUT_SECONDS", "300")),
-        )
-
-
-@dataclass
 class LoggingConfig:
     """Logging configuration for the application."""
 
@@ -125,7 +72,6 @@ class Settings:
         load_environment(env_profile)
 
         self.aws = AWSConfig.from_environment()
-        self.investigation = LogInvestigationConfig.from_environment()
         self.logging = LoggingConfig.from_environment()
 
         # Initialize logging
@@ -184,7 +130,6 @@ class Settings:
 
         # Reload configuration objects
         self.aws = AWSConfig.from_environment()
-        self.investigation = LogInvestigationConfig.from_environment()
         self.logging = LoggingConfig.from_environment()
         self._setup_logging()
 

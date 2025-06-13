@@ -67,8 +67,7 @@ class AWSCredentialsConfig(BaseModel):
     """AWS credentials and configuration"""
 
     region: str = Field(default="us-east-1", description="AWS region")
-    profile: Optional[str] = Field(
-        default=None, description="AWS profile name")
+    profile: Optional[str] = Field(default=None, description="AWS profile name")
     access_key_id: Optional[SecretStr] = Field(
         default=None, description="AWS access key ID"
     )
@@ -95,8 +94,7 @@ class AWSCredentialsConfig(BaseModel):
         # Read environment variables
         profile = os.getenv("AWS_PROFILE")
         region = (
-            os.getenv("AWS_REGION") or os.getenv(
-                "AWS_DEFAULT_REGION") or "us-east-1"
+            os.getenv("AWS_REGION") or os.getenv("AWS_DEFAULT_REGION") or "us-east-1"
         )
         access_key_id = os.getenv("AWS_ACCESS_KEY_ID")
         secret_access_key = os.getenv("AWS_SECRET_ACCESS_KEY")
@@ -235,8 +233,7 @@ class MCPConfig(BaseSettings):
     """Main MCP configuration class for direct CloudWatch integration"""
 
     # Logging configuration
-    log_level: LogLevel = Field(
-        default=LogLevel.INFO, description="Logging level")
+    log_level: LogLevel = Field(default=LogLevel.INFO, description="Logging level")
     log_format: str = Field(
         default="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         description="Log format string",
