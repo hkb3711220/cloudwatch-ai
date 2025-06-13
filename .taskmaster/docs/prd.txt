@@ -1,0 +1,231 @@
+# CloudWatch Logs AI Agent - Product Requirements Document
+
+## 概要
+CloudWatch Logsのアラート発報時に自動でログを調査し、エラーの原因候補や復旧策を提示するAIエージェントシステムの開発。自然言語による指示でAIが自律的にログ調査を行い、対話型でユーザーをサポートする。
+
+## 主要機能要件
+
+### 1. 自然言語指示による調査開始
+- "xxエラーが発生しました。調査してください"等の自然言語指示を受け付け
+- "調査してください"、"詳細を教えて"などの指示でAIが自律的に調査を開始
+- 初期指示からエラーの種類や調査対象を自動識別
+
+### 2. 自動ログ調査・分析機能
+- CloudWatch Logsから直近の関連ログを自動取得
+- エラーの頻度・パターンを自動分析
+- タイムライン表示で異常発生の経緯を整理
+- 頻出メッセージの要約とパターン検出
+
+### 3. 原因候補の提示
+- エラーの特徴や頻度から推定原因を抽出
+- 過去の類似インシデントの検索・提示
+- ログパターンに基づく原因候補のランキング表示
+
+### 4. 追加調査事項の提案
+- "このリソースのメトリクスも確認しましょう"
+- "デプロイ履歴もチェックしましょう"
+- "関連するリソースの状態も調べましょう"
+- 等の自動提案による包括的な調査サポート
+
+### 5. 復旧・エスカレーション提案
+- "再起動推奨"等のシンプルな復旧策提示
+- "○○チームにエスカレーションを"等の適切なエスカレーション基準
+- 緊急度レベルに応じた対応策の提示
+
+### 6. 対話継続機能
+- ユーザーの「もう少し詳細」「他に影響あるか？」等の追加質問に対応
+- コンテキストを維持した継続的な対話
+- 調査結果の深掘りや関連調査の実行
+
+## 技術仕様
+
+### 使用言語
+- Python
+
+### 主要ライブラリ
+- **AutoGen**: 最新バージョンを使用
+- **boto3**: AWS CloudWatch Logsアクセス用
+
+### アーキテクチャ
+- **Agent機能**: AutoGenのマルチエージェントシステム
+- **Tools/MCP機能**: CloudWatch Logsアクセス用のツール群
+- **対話エンジン**: 自然言語処理による指示解釈
+
+### CloudWatch Logs連携
+- boto3を使用したログ取得
+- ログストリーム・ログイベントの効率的な検索
+- 時系列データの分析機能
+
+## 開発優先度・制約事項
+
+### 現在の開発フォーカス
+- **Agent機能の開発に集中**
+- AutoGenを活用したマルチエージェントシステムの構築
+- Tools/MCP機能によるCloudWatch Logs連携
+
+### 現在考慮対象外
+- APIとして公開する機能
+- Web画面の構成
+- Chatbotのユーザーインターフェース
+- 外部システムとの連携API
+
+## 期待される成果物
+
+### 1. コアエージェントシステム
+- 自然言語指示を解釈するエージェント
+- ログ調査を実行するエージェント
+- 分析結果を要約・報告するエージェント
+
+### 2. CloudWatch Logsツール群
+- ログ検索・取得ツール
+- ログパターン分析ツール
+- メトリクス取得ツール
+
+### 3. 対話管理システム
+- コンテキスト保持機能
+- 継続的な質疑応答処理
+- 調査結果の構造化・表示
+
+### 4. 設定・構成管理
+- AWS認証情報管理
+- ログ調査パラメータ設定
+- エージェント動作設定
+
+## ユースケースシナリオ
+
+### 基本シナリオ
+1. アラート「xxエラーが発生しました。調査してください」を受信
+2. AIが自動でエラー内容を解析
+3. 関連するCloudWatch Logsを検索・取得
+4. ログパターンとエラー頻度を分析
+5. 原因候補と復旧策を提示
+6. 追加調査事項を提案
+7. ユーザーの追加質問に対応
+
+### 拡張シナリオ
+- 複数のログストリームにまたがる調査
+- 過去の類似インシデントとの比較分析
+- リアルタイムでのログ監視と異常検知
+
+## 成功指標
+- 自然言語指示の正確な解釈率
+- ログ調査の完了時間短縮
+- 原因特定の精度向上
+- ユーザーの対話満足度
+
+# CloudWatch Log Agent - MCP Server Integration PRD
+
+## Project Overview
+CloudWatch Log Agent MCPサーバ統合により、既存の日本語対応CloudWatchログ調査システムをMCP (Model Context Protocol) サーバとして公開し、他のAIツールやクライアントから利用できるようにする。
+
+## Background
+- 現在のシステム: AutoGen v0.4ベースの日本語対応CloudWatchログ調査エージェント
+- 4つの専門エージェント: PlannerAgent, InstructionAgent, InvestigationAgent, ReportingAgent
+- 5つのCloudWatchツール: list_log_groups, list_log_streams, search_log_events, get_recent_log_events, analyze_log_patterns
+- SelectorGroupChatによる智能的なエージェント選択とワークフロー制御
+
+## Goal
+既存のCloudWatchエージェント機能をMCPサーバとして公開し、外部のAIツール（Cursor、Claude Desktop等）から日本語CloudWatch調査を実行できるようにする。
+
+## Core Requirements
+
+### 1. MCP Server Implementation
+- Python MCP SDK を使用したサーバ実装
+- 既存のCloudWatchエージェント機能をMCPツールとして公開
+- 非同期処理対応
+- エラーハンドリングとログ出力
+
+### 2. MCP Tools (External Interface)
+以下のMCPツールを提供：
+
+#### 2.1 investigate_cloudwatch_logs
+- **機能**: 日本語指示によるCloudWatch調査の実行
+- **パラメータ**: 
+  - instruction (string): 日本語調査指示（例: "過去1時間でERRORログを調査してください"）
+  - async_mode (boolean, optional): 非同期実行モード（デフォルト: false）
+- **戻り値**: 調査結果レポート（JSON形式）
+
+#### 2.2 list_available_log_groups
+- **機能**: 利用可能なCloudWatchロググループの一覧取得
+- **パラメータ**: 
+  - name_prefix (string, optional): ロググループ名フィルタ
+  - limit (integer, optional): 最大取得数（デフォルト: 50）
+- **戻り値**: ロググループ一覧（JSON形式）
+
+#### 2.3 get_agent_status
+- **機能**: CloudWatchエージェントシステムの状態確認
+- **パラメータ**: なし
+- **戻り値**: システム状態情報（JSON形式）
+
+### 3. Configuration & Environment
+- MCP設定ファイル (.cursor/mcp.json等) のテンプレート作成
+- 環境変数設定ガイド
+- AWS認証情報とAI APIキーの設定サポート
+- ポート設定とセキュリティ考慮
+
+### 4. Error Handling & Logging
+- MCP通信エラーの適切な処理
+- CloudWatchエージェントエラーのMCP形式での伝達
+- 詳細なログ出力（デバッグ用）
+- タイムアウト処理
+
+### 5. Documentation & Examples
+- MCP統合設定ガイド（日本語）
+- Cursor等のクライアントでの使用例
+- トラブルシューティングガイド
+- APIリファレンス
+
+## Technical Requirements
+
+### Framework & Dependencies
+- mcp (Python MCP SDK)
+- asyncio (非同期処理)
+- 既存のAutoGenエージェントシステムとの統合
+- boto3 (AWS CloudWatch)
+- 既存の依存関係を維持
+
+### Architecture
+- MCPサーバ: src/mcp/server.py
+- MCPツール定義: src/mcp/tools.py
+- 設定管理: src/mcp/config.py
+- エージェント統合: 既存のsimplified_agents.pyを活用
+
+### Performance
+- 調査タスクの非同期実行サポート
+- 適切なタイムアウト設定
+- メモリ効率的な実装
+
+## User Stories
+
+### Story 1: Cursor Integration
+- **As a**: 開発者
+- **I want to**: CursorでMCP経由でCloudWatch調査を実行
+- **So that**: コーディング中に直接日本語でログ問題を調査できる
+
+### Story 2: Claude Desktop Integration  
+- **As a**: 運用エンジニア
+- **I want to**: Claude Desktopから日本語でCloudWatch調査を依頼
+- **So that**: 自然な日本語でインフラ問題を調査できる
+
+### Story 3: API Integration
+- **As a**: システム管理者
+- **I want to**: MCPプロトコル経由でCloudWatch調査を自動化
+- **So that**: 監視システムと統合した自動調査を実現できる
+
+## Success Criteria
+1. MCPサーバが正常に起動し、外部クライアントから接続可能
+2. 日本語指示によるCloudWatch調査がMCP経由で実行可能
+3. Cursorクライアントからの統合テストが成功
+4. 既存のスタンドアロン機能が引き続き動作
+5. 包括的なドキュメントと設定例が完備
+
+## Timeline
+- Phase 1: MCP基盤実装 (3-5タスク)
+- Phase 2: ツール統合とテスト (2-3タスク)  
+- Phase 3: ドキュメントと最適化 (2-3タスク)
+
+## Constraints
+- 既存のCloudWatchエージェント機能を変更せずに拡張
+- Python MCP SDKとの互換性維持
+- AWS認証とAI APIキーの安全な管理
+- 既存の依存関係との競合回避 
