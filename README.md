@@ -67,7 +67,12 @@ cp .env.mcp.example .env
         "run",
         "python",
         "run_mcp_server.py"
-      ]
+      ],
+      "env": {
+        "AWS_PROFILE": "default",
+        "AWS_REGION": "ap-northeast-1",
+        "MCP_SERVER__TRANSPORT": "stdio"
+      }
     }
   }
 }
@@ -197,11 +202,13 @@ python src/main.py --instruction "Lambda関数の性能問題を調査してく�
 AWS_PROFILE=default
 AWS_REGION=ap-northeast-1
 
-# MCP サーバー設定
-MCP_SERVER_NAME=CloudWatch Logs Direct Integration
-MCP_SERVER_VERSION=0.3.0
-MCP_TRANSPORT=stdio
-MCP_DEBUG=false
+# MCP サーバー設定（実際に使用される設定のみ）
+MCP_SERVER__NAME=CloudWatch Logs MCP Server
+MCP_SERVER__VERSION=0.3.0
+# Transport options: stdio, sse, streamable-http
+MCP_SERVER__TRANSPORT=stdio
+MCP_SERVER__HOST=localhost    # sse/streamable-httpの場合に使用
+MCP_SERVER__PORT=8000         # sse/streamable-httpの場合に使用
 
 # ログ設定
 LOG_LEVEL=INFO
@@ -233,6 +240,17 @@ ENABLE_DEBUG_LOGGING=false
 2. **環境変数**: `AWS_ACCESS_KEY_ID` と `AWS_SECRET_ACCESS_KEY`
 3. **IAM ロール**: EC2/ECS インスタンス用
 
+### 環境変数の優先順位
+
+環境変数は以下の優先順位で読み込まれます（上位が優先）：
+
+1. **外部環境変数** (最優先) - MCP サーバーの`env`セクション、システム環境変数など
+2. **`.env.{profile}`ファイル** - プロファイル固有の設定
+3. **`.env`ファイル** - ローカル上書き設定
+4. **`.env.cloudwatch`ファイル** - ベース設定
+
+**重要**: 外部から渡された環境変数（MCP の`env`セクションなど）は`.env`ファイルによって上書きされることはありません。
+
 ## 📁 プロジェクト構造
 
 ```
@@ -245,7 +263,7 @@ cloudwatch-log-agent/
 │   └── config/                    # 設定管理
 ├── run_mcp_server.py              # MCP サーバー起動スクリプト
 ├── requirements.txt               # 依存関係
-├── .env.mcp                       # MCP設定テンプレート
+├── .env.mcp.example               # MCP設定テンプレート
 └── .env.agent                     # Agent設定ファイル
 ```
 

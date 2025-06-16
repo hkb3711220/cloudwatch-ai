@@ -38,14 +38,16 @@ for module in modules_to_clear:
 # -----------------------------
 
 # 環境変数を早期に読み込む
+# 優先順位: 外部環境変数 > .env.mcp > .env.local > .env
+# override=False により、外部から渡された環境変数（MCPのenvセクション等）を保護
 try:
     from dotenv import load_dotenv
 
-    # 複数の.envファイルを順番に読み込み
+    # 複数の.envファイルを順番に読み込み（外部環境変数を上書きしない）
     env_files = [".env.mcp", ".env.local", ".env"]
     for env_file in env_files:
         if Path(env_file).exists():
-            load_dotenv(env_file, override=False)
+            load_dotenv(env_file, override=False)  # 外部環境変数を保護
             print(f"✅ 環境ファイルを読み込みました: {env_file}")
             break
     else:
@@ -133,6 +135,9 @@ def start_server():
         print(f"📋 サーバー名: {info['name']}")
         print(f"📋 バージョン: {info['version']}")
         print(f"📋 ツール数: {info['tools_count']}")
+        print(f"📋 トランスポート: {info['transport']}")
+        if 'host' in info and 'port' in info:
+            print(f"📋 サーバーアドレス: {info['host']}:{info['port']}")
         print(f"📋 AWS リージョン: {info['config']['aws_region']}")
         print(f"📋 AWS プロファイル: {info['config']['aws_profile'] or '未設定'}")
         print(f"📋 キャッシュ: 削除済み (機能を無効化)")
@@ -141,6 +146,9 @@ def start_server():
         # 環境変数の確認
         print("\n🔍 環境変数の確認:")
         env_vars = [
+            "MCP_SERVER__TRANSPORT",
+            "MCP_SERVER__HOST",
+            "MCP_SERVER__PORT",
             "AWS_PROFILE",
             "AWS_REGION",
             "AWS_DEFAULT_REGION",
@@ -158,6 +166,9 @@ def start_server():
 
         # 実際のconfig内容を表示
         print("\n📋 読み込まれた設定:")
+        print(f"   Transport: {config.server.transport.value}")
+        print(f"   Host: {config.server.host}")
+        print(f"   Port: {config.server.port}")
         print(f"   AWS Profile: {config.aws.profile or '未設定'}")
         print(f"   AWS Region: {config.aws.region}")
         print(f"   AWS設定済み: {'はい' if config.aws.is_configured() else 'いいえ'}")
@@ -175,11 +186,30 @@ def start_server():
         print("🎯 サーバーが起動しました。Ctrl+C で停止できます。")
         print("=" * 60)
 
-        # FastMCPのrun()メソッドは内部でasyncioループを管理するため、
-        # 直接呼び出す（asyncio.run()は使わない）
-        import asyncio
-
-        asyncio.run(server.app.run())
+        # サーバーを起動（transport設定を適用）
+        # Transport設定に応じてサーバーを起動
+        if config.server.transport.value == "stdio":
+            # STDIOトランスポート（デフォルト）
+            asyncio.run(server.app.run(transport="stdio"))
+        elif config.server.transport.value == "sse":
+            # SSEトランスポート
+            print(f"🌐 SSEサーバーを起動中: {config.server.host}:{config.server.port}")
+            asyncio.run(server.app.run(
+                transport="sse",
+                host=config.server.host,
+                port=config.server.port
+            ))
+        elif config.server.transport.value == "streamable-http":
+            # HTTPトランスポート
+            print(f"🌐 HTTPサーバーを起動中: {config.server.host}:{config.server.port}")
+            asyncio.run(server.app.run(
+                transport="streamable-http",
+                host=config.server.host,
+                port=config.server.port
+            ))
+        else:
+            # デフォルトはSTDIO
+            asyncio.run(server.app.run(transport="stdio"))
 
     except KeyboardInterrupt:
         print("\n🛑 サーバー停止が要求されました")

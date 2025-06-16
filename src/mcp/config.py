@@ -67,7 +67,8 @@ class AWSCredentialsConfig(BaseModel):
     """AWS credentials and configuration"""
 
     region: str = Field(default="us-east-1", description="AWS region")
-    profile: Optional[str] = Field(default=None, description="AWS profile name")
+    profile: Optional[str] = Field(
+        default=None, description="AWS profile name")
     access_key_id: Optional[SecretStr] = Field(
         default=None, description="AWS access key ID"
     )
@@ -94,7 +95,8 @@ class AWSCredentialsConfig(BaseModel):
         # Read environment variables
         profile = os.getenv("AWS_PROFILE")
         region = (
-            os.getenv("AWS_REGION") or os.getenv("AWS_DEFAULT_REGION") or "us-east-1"
+            os.getenv("AWS_REGION") or os.getenv(
+                "AWS_DEFAULT_REGION") or "us-east-1"
         )
         access_key_id = os.getenv("AWS_ACCESS_KEY_ID")
         secret_access_key = os.getenv("AWS_SECRET_ACCESS_KEY")
@@ -161,9 +163,8 @@ class AWSCredentialsConfig(BaseModel):
 class ServerConfig(BaseModel):
     """MCP server configuration"""
 
-    name: str = Field(
-        default="CloudWatch Logs Direct Integration", description="Server name"
-    )
+    name: str = Field(default="CloudWatch Logs MCP Server",
+                      description="Server name")
     version: str = Field(default="0.3.0", description="Server version")
     transport: TransportType = Field(
         default=TransportType.STDIO, description="Transport protocol"
@@ -171,13 +172,7 @@ class ServerConfig(BaseModel):
     host: str = Field(default="localhost", description="Server host")
     port: int = Field(default=8000, description="Server port")
 
-    # Performance settings
-    max_workers: int = Field(default=4, description="Maximum worker threads")
-    timeout: int = Field(default=300, description="Request timeout in seconds")
-
-    # Development settings
-    debug: bool = Field(default=False, description="Enable debug mode")
-    reload: bool = Field(default=False, description="Enable auto-reload")
+    # Note: Performance and development settings removed as they were not used in the codebase
 
     if PYDANTIC_V2:
 
@@ -189,22 +184,6 @@ class ServerConfig(BaseModel):
                 raise ValueError("Port must be between 1 and 65535")
             return v
 
-        @field_validator("max_workers")
-        @classmethod
-        def validate_max_workers(cls, v):
-            """Validate max workers"""
-            if not 1 <= v <= 32:
-                raise ValueError("Max workers must be between 1 and 32")
-            return v
-
-        @field_validator("timeout")
-        @classmethod
-        def validate_timeout(cls, v):
-            """Validate timeout"""
-            if not 10 <= v <= 3600:
-                raise ValueError("Timeout must be between 10 and 3600 seconds")
-            return v
-
     else:
 
         @validator("port")
@@ -214,26 +193,13 @@ class ServerConfig(BaseModel):
                 raise ValueError("Port must be between 1 and 65535")
             return v
 
-        @validator("max_workers")
-        def validate_max_workers(cls, v):
-            """Validate max workers"""
-            if not 1 <= v <= 32:
-                raise ValueError("Max workers must be between 1 and 32")
-            return v
-
-        @validator("timeout")
-        def validate_timeout(cls, v):
-            """Validate timeout"""
-            if not 10 <= v <= 3600:
-                raise ValueError("Timeout must be between 10 and 3600 seconds")
-            return v
-
 
 class MCPConfig(BaseSettings):
     """Main MCP configuration class for direct CloudWatch integration"""
 
     # Logging configuration
-    log_level: LogLevel = Field(default=LogLevel.INFO, description="Logging level")
+    log_level: LogLevel = Field(
+        default=LogLevel.INFO, description="Logging level")
     log_format: str = Field(
         default="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         description="Log format string",
