@@ -67,7 +67,12 @@ cp .env.mcp.example .env
         "run",
         "python",
         "run_mcp_server.py"
-      ]
+      ],
+      "env": {
+        "AWS_PROFILE": "default",
+        "AWS_REGION": "ap-northeast-1",
+        "MCP_SERVER__TRANSPORT": "stdio"
+      }
     }
   }
 }
