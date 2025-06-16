@@ -146,9 +146,9 @@ def start_server():
         # 環境変数の確認
         print("\n🔍 環境変数の確認:")
         env_vars = [
-            "MCP_TRANSPORT",
-            "MCP_HOST",
-            "MCP_PORT",
+            "MCP_SERVER__TRANSPORT",
+            "MCP_SERVER__HOST",
+            "MCP_SERVER__PORT",
             "AWS_PROFILE",
             "AWS_REGION",
             "AWS_DEFAULT_REGION",
