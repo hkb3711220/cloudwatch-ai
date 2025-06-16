@@ -218,7 +218,6 @@ class MCPConfig(BaseSettings):
             env_file_encoding="utf-8",
             extra="ignore",
         )
-        print(model_config)
     else:
 
         class Config:

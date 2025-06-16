@@ -105,7 +105,8 @@ class EnvLoader:
                         loaded_count += 1
 
             self.loaded_files.append(file_path)
-            logger.info(f"Loaded {loaded_count} environment variables from {file_path}")
+            logger.info(
+                f"Loaded {loaded_count} environment variables from {file_path}")
             return True
 
         except Exception as e:
@@ -128,25 +129,43 @@ class EnvLoader:
         Returns:
             True if at least one file was loaded successfully
         """
+        # Load files in reverse order of priority, with override=True for files
+        # but preserve external environment variables (those already set)
+
+        # First, capture existing environment variables (external ones)
+        external_vars = dict(os.environ)
+
         files_to_load = [
-            ".env.cloudwatch",  # Base configuration
-            ".env",  # Local overrides
+            ".env.cloudwatch",  # Base configuration - loaded first, lowest priority
+            ".env",  # Local overrides - loaded second, medium priority
         ]
 
         # Add profile-specific file if not default
         if profile != "default":
+            # Profile-specific - loaded last, highest priority among files
             files_to_load.append(f".env.{profile}")
 
         loaded_any = False
         for env_file in files_to_load:
-            # Use override=False to respect external environment variables
-            if self.load_env_file(env_file, override=False):
+            # Use override=True to allow later files to override earlier ones
+            if self.load_env_file(env_file, override=True):
                 loaded_any = True
+
+        # Restore external environment variables (highest priority)
+        # This ensures external variables are never overridden by .env files
+        for key, value in external_vars.items():
+            # Restore external variable if it was overridden by .env files
+            if os.environ.get(key) != value:
+                os.environ[key] = value
+                # Remove from our tracking since it's external
+                if key in self.env_vars:
+                    del self.env_vars[key]
 
         if loaded_any:
             logger.info(f"Environment profile '{profile}' loaded successfully")
         else:
-            logger.warning(f"No environment files found for profile '{profile}'")
+            logger.warning(
+                f"No environment files found for profile '{profile}'")
 
         return loaded_any
 
