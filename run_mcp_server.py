@@ -190,26 +190,26 @@ def start_server():
         # Transport設定に応じてサーバーを起動
         if config.server.transport.value == "stdio":
             # STDIOトランスポート（デフォルト）
-            server.app.run(transport="stdio")
+            asyncio.run(server.app.run(transport="stdio"))
         elif config.server.transport.value == "sse":
             # SSEトランスポート
             print(f"🌐 SSEサーバーを起動中: {config.server.host}:{config.server.port}")
-            server.app.run(
+            asyncio.run(server.app.run(
                 transport="sse",
                 host=config.server.host,
                 port=config.server.port
-            )
+            ))
         elif config.server.transport.value == "streamable-http":
             # HTTPトランスポート
             print(f"🌐 HTTPサーバーを起動中: {config.server.host}:{config.server.port}")
-            server.app.run(
+            asyncio.run(server.app.run(
                 transport="streamable-http",
                 host=config.server.host,
                 port=config.server.port
-            )
+            ))
         else:
             # デフォルトはSTDIO
-            server.app.run(transport="stdio")
+            asyncio.run(server.app.run(transport="stdio"))
 
     except KeyboardInterrupt:
         print("\n🛑 サーバー停止が要求されました")
