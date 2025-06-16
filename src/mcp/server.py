@@ -9,7 +9,7 @@ from typing import Dict, Any, Optional
 import json
 
 from fastmcp import FastMCP
-from .config import load_config, MCPConfig
+from .config import load_config, MCPConfig, TransportType
 from .tools import MCPToolsManager
 from .request_handler import MCPRequestHandler
 
@@ -36,7 +36,8 @@ class CloudWatchMCPServer:
         self.tools_manager = MCPToolsManager(self.config)
 
         # Initialize request handler
-        self.request_handler = MCPRequestHandler(self.config, self.tools_manager)
+        self.request_handler = MCPRequestHandler(
+            self.config, self.tools_manager)
 
         # Initialize FastMCP server
         self.app = FastMCP(
@@ -178,10 +179,37 @@ class CloudWatchMCPServer:
     async def start_server(self) -> None:
         """Start the MCP server"""
         try:
-            logger.info("Starting CloudWatch MCP Server (Direct Integration)...")
+            logger.info(
+                "Starting CloudWatch MCP Server (Direct Integration)...")
+            logger.info(f"Transport: {self.config.server.transport.value}")
 
-            # Start the FastMCP server
-            await self.app.run()
+            # Transport設定に応じてサーバーを起動
+            if self.config.server.transport == TransportType.STDIO:
+                # STDIOトランスポート（デフォルト）
+                await self.app.run(transport="stdio")
+            elif self.config.server.transport == TransportType.SSE:
+                # SSEトランスポート
+                logger.info(
+                    f"Starting SSE server on {self.config.server.host}:{self.config.server.port}")
+                await self.app.run(
+                    transport="sse",
+                    host=self.config.server.host,
+                    port=self.config.server.port
+                )
+            elif self.config.server.transport == TransportType.HTTP:
+                # Streamable HTTPトランスポート
+                logger.info(
+                    f"Starting HTTP server on {self.config.server.host}:{self.config.server.port}")
+                await self.app.run(
+                    transport="streamable-http",
+                    host=self.config.server.host,
+                    port=self.config.server.port
+                )
+            else:
+                # フォールバック（STDIO）
+                logger.warning(
+                    f"Unknown transport type: {self.config.server.transport}, falling back to stdio")
+                await self.app.run(transport="stdio")
 
             logger.info("CloudWatch MCP Server started successfully")
 
@@ -205,7 +233,7 @@ class CloudWatchMCPServer:
 
     def get_server_info(self) -> Dict[str, Any]:
         """Get server information"""
-        return {
+        server_info = {
             "name": self.config.server.name,
             "version": self.config.server.version,
             "transport": self.config.server.transport.value,
@@ -218,6 +246,13 @@ class CloudWatchMCPServer:
                 "aws_profile": self.config.aws.profile,
             },
         }
+
+        # ネットワークトランスポートの場合はhost/port情報を追加
+        if self.config.server.transport in [TransportType.SSE, TransportType.HTTP]:
+            server_info["host"] = self.config.server.host
+            server_info["port"] = self.config.server.port
+
+        return server_info
 
 
 async def main():

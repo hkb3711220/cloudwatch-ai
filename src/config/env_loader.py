@@ -3,6 +3,14 @@ Environment variable loader for CloudWatch Log Agent.
 
 This module provides utilities to load environment variables from .env files
 and support different environment profiles (dev, test, prod).
+
+Environment Variable Priority (highest to lowest):
+1. External environment variables (e.g., from MCP server env section)
+2. .env.{profile} files (profile-specific settings)
+3. .env files (local overrides)
+4. .env.cloudwatch files (base configuration)
+
+External environment variables are never overridden by .env files.
 """
 
 import os
@@ -108,10 +116,11 @@ class EnvLoader:
         """
         Load environment variables for a specific profile.
 
-        Profiles are loaded in this order:
-        1. .env.cloudwatch (base configuration)
-        2. .env (local overrides)
-        3. .env.{profile} (profile-specific settings)
+        Profiles are loaded in this order (with proper priority):
+        1. .env.cloudwatch (base configuration) - lowest priority
+        2. .env (local overrides) - medium priority
+        3. .env.{profile} (profile-specific settings) - higher priority
+        4. External environment variables (e.g., from MCP) - highest priority (never overridden)
 
         Args:
             profile: Environment profile name (dev, test, prod, etc.)
@@ -130,7 +139,8 @@ class EnvLoader:
 
         loaded_any = False
         for env_file in files_to_load:
-            if self.load_env_file(env_file, override=True):
+            # Use override=False to respect external environment variables
+            if self.load_env_file(env_file, override=False):
                 loaded_any = True
 
         if loaded_any:

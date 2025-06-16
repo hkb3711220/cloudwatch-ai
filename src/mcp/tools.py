@@ -46,13 +46,13 @@ class MCPToolsManager:
         else:
             self.config = config
 
-        logger.info("Initializing MCP Tools Manager (Direct CloudWatch Integration)")
+        logger.info("Initializing MCP Tools Manager")
         logger.debug(f"AWS Region: {self.config.aws.region}")
 
         # Connection status
         self._aws_connected = False
 
-        logger.info("MCP Tools Manager initialized (Direct CloudWatch)")
+        logger.info("MCP Tools Manager initialized")
 
     async def investigate_cloudwatch_logs(
         self,
