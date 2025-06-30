@@ -67,10 +67,10 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         logger.error(f"Error processing request: {str(e)}")
         return {
             'statusCode': 500,
-            'body': {
+            'body': json.dumps({
                 'error': str(e),
                 'message_ja': f'リクエスト処理中にエラーが発生しました: {str(e)}'
-            }
+            })
         }
 
 
