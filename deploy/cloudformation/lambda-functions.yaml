@@ -1,0 +1,140 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CloudWatch Lambda Functions for MCP Server Integration'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+    Description: Environment name
+
+  LogRetentionInDays:
+    Type: Number
+    Default: 14
+    Description: CloudWatch Logs retention period in days
+
+Resources:
+  # IAM Role for Lambda Functions
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'cloudwatch-mcp-lambda-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: CloudWatchAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:DescribeLogGroups
+                  - logs:DescribeLogStreams
+                  - logs:GetLogEvents
+                  - logs:FilterLogEvents
+                  - logs:StartQuery
+                  - logs:StopQuery
+                  - logs:GetQueryResults
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - cloudwatch:GetMetricStatistics
+                  - cloudwatch:ListMetrics
+                  - cloudwatch:GetMetricData
+                  - cloudwatch:DescribeAlarms
+                Resource: '*'
+
+  # CloudWatch Logs Handler Lambda Function
+  CloudWatchLogsHandlerFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'cloudwatch-logs-handler-${Environment}'
+      Runtime: python3.11
+      Handler: cloudwatch_logs_handler.lambda_handler
+      Code:
+        ZipFile: |
+          # Placeholder code - will be replaced during deployment
+          def lambda_handler(event, context):
+              return {'statusCode': 200, 'body': 'Placeholder'}
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 300
+      MemorySize: 512
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+          LOG_LEVEL: INFO
+      Description: 'CloudWatch Logs investigation handler for MCP Server'
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: CloudWatch-MCP-Server
+
+  # CloudWatch Metrics Handler Lambda Function
+  CloudWatchMetricsHandlerFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'cloudwatch-metrics-handler-${Environment}'
+      Runtime: python3.11
+      Handler: cloudwatch_metrics_handler.lambda_handler
+      Code:
+        ZipFile: |
+          # Placeholder code - will be replaced during deployment
+          def lambda_handler(event, context):
+              return {'statusCode': 200, 'body': 'Placeholder'}
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 300
+      MemorySize: 512
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+          LOG_LEVEL: INFO
+      Description: 'CloudWatch Metrics investigation handler for MCP Server'
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: CloudWatch-MCP-Server
+
+  # CloudWatch Log Groups for Lambda Functions
+  LogsHandlerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/cloudwatch-logs-handler-${Environment}'
+      RetentionInDays: !Ref LogRetentionInDays
+
+  MetricsHandlerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/cloudwatch-metrics-handler-${Environment}'
+      RetentionInDays: !Ref LogRetentionInDays
+
+Outputs:
+  CloudWatchLogsHandlerFunctionName:
+    Description: 'CloudWatch Logs Handler Lambda Function Name'
+    Value: !Ref CloudWatchLogsHandlerFunction
+    Export:
+      Name: !Sub '${AWS::StackName}-logs-handler-function-name'
+
+  CloudWatchMetricsHandlerFunctionName:
+    Description: 'CloudWatch Metrics Handler Lambda Function Name'
+    Value: !Ref CloudWatchMetricsHandlerFunction
+    Export:
+      Name: !Sub '${AWS::StackName}-metrics-handler-function-name'
+
+  LambdaExecutionRoleArn:
+    Description: 'IAM Role ARN for Lambda Functions'
+    Value: !GetAtt LambdaExecutionRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-lambda-execution-role-arn'
+
+  StackName:
+    Description: 'CloudFormation Stack Name'
+    Value: !Ref 'AWS::StackName'

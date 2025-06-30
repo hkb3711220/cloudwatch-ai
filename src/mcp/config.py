@@ -194,6 +194,19 @@ class ServerConfig(BaseModel):
             return v
 
 
+class LambdaFunctionsConfig(BaseModel):
+    """Lambda functions configuration"""
+    
+    logs_function: str = Field(
+        default="cloudwatch-logs-handler", 
+        description="Lambda function name for CloudWatch Logs operations"
+    )
+    metrics_function: str = Field(
+        default="cloudwatch-metrics-handler", 
+        description="Lambda function name for CloudWatch Metrics operations"
+    )
+
+
 class MCPConfig(BaseSettings):
     """Main MCP configuration class for direct CloudWatch integration"""
 
@@ -208,6 +221,7 @@ class MCPConfig(BaseSettings):
     # Configuration sections
     server: ServerConfig = Field(default_factory=ServerConfig)
     aws: AWSCredentialsConfig = Field(default_factory=AWSCredentialsConfig)
+    lambda_functions: LambdaFunctionsConfig = Field(default_factory=LambdaFunctionsConfig)
 
     if PYDANTIC_V2:
         model_config = SettingsConfigDict(

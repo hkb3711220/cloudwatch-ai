@@ -13,10 +13,13 @@ CloudWatch ログ・メトリクス調査用の AI エージェントです。Cu
 ## 🌟 主な機能
 
 - **MCP サーバー統合**: Cursor IDE や Claude Desktop との直接連携
+  - **Direct MCP Server**: 直接 CloudWatch API 統合（低レイテンシ）
+  - **Lambda MCP Server**: AWS Lambda 経由の統合（スケーラブル、コスト効率的）
 - **AutoGen マルチエージェント**: 複雑なログ・メトリクス解析用の AI エージェントシステム
 - **日本語優先対応**: ネイティブな日本語処理とレポート
 - **AWS CloudWatch Logs**: 直接 API 統合とセキュアな認証
 - **AWS CloudWatch Metrics**: CPU、メモリ、ディスク、ネットワーク、API 呼び出し数、エラー率などの包括的なメトリクス調査
+- **AWS Lambda 統合**: サーバーレス関数での CloudWatch 操作
 - **エラー処理**: 包括的な例外管理とリトライ機能
 
 ## 📦 インストール
@@ -51,6 +54,8 @@ cp .env.mcp.example .env
 ## 🔧 使用方法
 
 ### 1. MCP サーバーとしての使用（Cursor IDE 統合）
+
+#### オプション A: Direct MCP Server（直接統合）
 
 #### グローバル MCP 設定
 
@@ -104,6 +109,46 @@ cp .env.mcp.example .env
 | --------------------- | -------------------------------------- |
 | `get_request_metrics` | MCP サーバーのリクエストメトリクス取得 |
 | `get_active_requests` | 現在アクティブなリクエストの情報取得   |
+
+#### オプション B: AWS Serverless MCP Server（推奨）
+
+AWS の公式 Serverless MCP Server を使用してサーバーレス統合を実現します。詳細は [AWS Serverless MCP Server ドキュメント](docs/AWS_SERVERLESS_MCP_SERVER.md) を参照してください。
+
+##### Lambda 関数のデプロイ
+
+```bash
+# SAM を使用してLambda 関数をデプロイ
+cd deploy/sam
+./deploy.sh --bucket your-sam-deployment-bucket
+
+# 異なる環境へのデプロイ
+./deploy.sh --environment prod --region us-west-2 --bucket your-bucket
+```
+
+##### グローバル MCP 設定（AWS Serverless 版）
+
+`~/.cursor/mcp.json` に以下を追加：
+
+```json
+{
+  "mcpServers": {
+    "aws-serverless-cloudwatch": {
+      "command": "uvx",
+      "args": [
+        "awslabs.aws-serverless-mcp-server@latest",
+        "--allow-write",
+        "--allow-sensitive-data-access"
+      ],
+      "env": {
+        "AWS_PROFILE": "default",
+        "AWS_REGION": "ap-northeast-1",
+        "CLOUDWATCH_LOGS_FUNCTION": "cloudwatch-logs-handler-dev",
+        "CLOUDWATCH_METRICS_FUNCTION": "cloudwatch-metrics-handler-dev"
+      }
+    }
+  }
+}
+```
 
 #### MCP での使用例
 
@@ -260,8 +305,22 @@ cloudwatch-log-agent/
 │   │   └── simplified_agents.py    # メインエージェント
 │   ├── tools/                      # AutoGen 用ツール
 │   ├── mcp/                       # MCP サーバー機能
+│   │   ├── server.py              # Direct MCP Server
+│   │   ├── lambda_server.py       # Lambda MCP Server
+│   │   ├── tools.py               # MCP ツール管理
+│   │   └── config.py              # MCP 設定管理
+│   ├── lambda_functions/          # Lambda 関数
+│   │   ├── cloudwatch_logs_handler.py    # ログ処理関数
+│   │   └── cloudwatch_metrics_handler.py # メトリクス処理関数
 │   └── config/                    # 設定管理
-├── run_mcp_server.py              # MCP サーバー起動スクリプト
+├── deploy/                        # AWS デプロイメント
+│   ├── cloudformation/            # CloudFormation テンプレート（レガシー）
+│   ├── scripts/                   # デプロイメントスクリプト（レガシー）
+│   ├── sam/                       # AWS SAM デプロイメント（推奨）
+│   └── lambda/                    # Lambda デプロイメント用
+├── docs/                          # ドキュメント
+│   └── AWS_SERVERLESS_MCP_SERVER.md  # AWS Serverless MCP Server ガイド
+├── run_mcp_server.py              # Direct MCP サーバー起動スクリプト
 ├── requirements.txt               # 依存関係
 ├── .env.mcp.example               # MCP設定テンプレート
 └── .env.agent                     # Agent設定ファイル
