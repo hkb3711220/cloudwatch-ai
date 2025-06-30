@@ -143,7 +143,7 @@ def investigate_metrics(params: Dict[str, Any]) -> Dict[str, Any]:
         
         # Calculate summary statistics
         if datapoints:
-            values = [dp.get('Average', dp.get('Value', 0)) for dp in datapoints if 'Average' in dp or 'Value' in dp]
+            values = [dp['Average'] for dp in datapoints if 'Average' in dp]
             if values:
                 summary_stats = {
                     'min_value': min(values),
