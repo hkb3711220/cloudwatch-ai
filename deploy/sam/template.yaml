@@ -1,0 +1,162 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: 'CloudWatch Lambda Functions for AWS Serverless MCP Server Integration'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+    Description: Environment name
+
+  LogRetentionInDays:
+    Type: Number
+    Default: 14
+    Description: CloudWatch Logs retention period in days
+
+Globals:
+  Function:
+    Runtime: python3.11
+    Timeout: 300
+    MemorySize: 512
+    Environment:
+      Variables:
+        ENVIRONMENT: !Ref Environment
+        LOG_LEVEL: INFO
+    Tags:
+      Environment: !Ref Environment
+      Project: CloudWatch-MCP-Server
+
+Resources:
+  # IAM Role for Lambda Functions
+  CloudWatchMCPLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'cloudwatch-mcp-lambda-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: CloudWatchAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:DescribeLogGroups
+                  - logs:DescribeLogStreams
+                  - logs:GetLogEvents
+                  - logs:FilterLogEvents
+                  - logs:StartQuery
+                  - logs:StopQuery
+                  - logs:GetQueryResults
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - cloudwatch:GetMetricStatistics
+                  - cloudwatch:ListMetrics
+                  - cloudwatch:GetMetricData
+                  - cloudwatch:DescribeAlarms
+                Resource: '*'
+
+  # CloudWatch Logs Handler Lambda Function
+  CloudWatchLogsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'cloudwatch-logs-handler-${Environment}'
+      CodeUri: ../../src/lambda_functions/
+      Handler: cloudwatch_logs_handler.lambda_handler
+      Role: !GetAtt CloudWatchMCPLambdaRole.Arn
+      Description: 'CloudWatch Logs investigation handler for AWS Serverless MCP Server'
+      Events:
+        # Allow invocation from AWS Serverless MCP Server
+        MCPServerInvoke:
+          Type: Api
+          Properties:
+            Path: /logs/{operation+}
+            Method: any
+            RestApiId: !Ref CloudWatchMCPApi
+
+  # CloudWatch Metrics Handler Lambda Function  
+  CloudWatchMetricsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'cloudwatch-metrics-handler-${Environment}'
+      CodeUri: ../../src/lambda_functions/
+      Handler: cloudwatch_metrics_handler.lambda_handler
+      Role: !GetAtt CloudWatchMCPLambdaRole.Arn
+      Description: 'CloudWatch Metrics investigation handler for AWS Serverless MCP Server'
+      Events:
+        # Allow invocation from AWS Serverless MCP Server
+        MCPServerInvoke:
+          Type: Api
+          Properties:
+            Path: /metrics/{operation+}
+            Method: any
+            RestApiId: !Ref CloudWatchMCPApi
+
+  # API Gateway for MCP Server Integration
+  CloudWatchMCPApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: !Sub 'cloudwatch-mcp-api-${Environment}'
+      StageName: !Ref Environment
+      Description: 'API Gateway for CloudWatch MCP Server Integration'
+      Cors:
+        AllowMethods: "'*'"
+        AllowHeaders: "'*'"
+        AllowOrigin: "'*'"
+      Auth:
+        # Use IAM authentication for security
+        DefaultAuthorizer: AWS_IAM
+      Tags:
+        Environment: !Ref Environment
+        Project: CloudWatch-MCP-Server
+
+  # CloudWatch Log Groups for Lambda Functions
+  LogsHandlerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/cloudwatch-logs-handler-${Environment}'
+      RetentionInDays: !Ref LogRetentionInDays
+
+  MetricsHandlerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/cloudwatch-metrics-handler-${Environment}'
+      RetentionInDays: !Ref LogRetentionInDays
+
+Outputs:
+  CloudWatchLogsHandlerFunctionName:
+    Description: 'CloudWatch Logs Handler Lambda Function Name'
+    Value: !Ref CloudWatchLogsFunction
+    Export:
+      Name: !Sub '${AWS::StackName}-logs-handler-function-name'
+
+  CloudWatchMetricsHandlerFunctionName:
+    Description: 'CloudWatch Metrics Handler Lambda Function Name'
+    Value: !Ref CloudWatchMetricsFunction
+    Export:
+      Name: !Sub '${AWS::StackName}-metrics-handler-function-name'
+
+  ApiGatewayUrl:
+    Description: 'API Gateway URL for MCP Server Integration'
+    Value: !Sub 'https://${CloudWatchMCPApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}'
+    Export:
+      Name: !Sub '${AWS::StackName}-api-url'
+
+  LambdaExecutionRoleArn:
+    Description: 'IAM Role ARN for Lambda Functions'
+    Value: !GetAtt CloudWatchMCPLambdaRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-lambda-execution-role-arn'
+
+  StackName:
+    Description: 'CloudFormation Stack Name'
+    Value: !Ref 'AWS::StackName'
